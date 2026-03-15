@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulation ML — Transmission Vocale</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#F8FAFC;color:#1E293B;font-size:14px}
+h1{font-size:20px;font-weight:700;color:#1E3A5F;padding:1.2rem 1.5rem 0.3rem;border-bottom:2px solid #2563EB;margin-bottom:1rem}
+.subtitle{font-size:12px;color:#64748B;padding:0 1.5rem 0.8rem}
+.tabs{display:flex;gap:4px;padding:0 1.5rem;border-bottom:1px solid #CBD5E1;margin-bottom:1.2rem;flex-wrap:wrap}
+.tab{padding:7px 14px;font-size:13px;cursor:pointer;border-radius:8px 8px 0 0;border:1px solid transparent;color:#64748B;background:none}
+.tab.on{border-color:#CBD5E1;border-bottom-color:#F8FAFC;color:#1E293B;font-weight:600;background:#F8FAFC}
+.panel{display:none;padding:0 1.5rem 1.5rem}.panel.on{display:block}
+.card{background:white;border:1px solid #E2E8F0;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem}
+.metric{background:#F1F5F9;border-radius:8px;padding:10px 14px;flex:1;min-width:100px}
+.ml{font-size:11px;color:#64748B;margin-bottom:3px}
+.mv{font-size:20px;font-weight:700}
+.green{color:#15803D}.red{color:#B91C1C}.blue{color:#1D4ED8}.purple{color:#7C3AED}.orange{color:#B45309}
+label{font-size:12px;color:#64748B;display:block;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:#2563EB}
+select{width:100%;padding:7px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;background:white}
+button{padding:8px 18px;font-size:13px;border:1px solid #CBD5E1;border-radius:8px;background:white;cursor:pointer;margin-right:6px;margin-bottom:6px;font-weight:500}
+button:hover{background:#F1F5F9}
+.btn-rec{background:#DC2626;color:white;border-color:#DC2626}
+.btn-rec:hover{background:#B91C1C}
+.btn-stop{background:#2563EB;color:white;border-color:#2563EB}
+.btn-stop:hover{background:#1D4ED8}
+.btn-run{background:#16A34A;color:white;border-color:#16A34A}
+.btn-run:hover{background:#15803D}
+.btn-play{background:#7C3AED;color:white;border-color:#7C3AED}
+.btn-play:hover{background:#6D28D9}
+.slabel{font-size:11px;color:#64748B;font-weight:600;margin-bottom:4px}
+.log{font-family:'Courier New',monospace;font-size:11px;background:#F1F5F9;border-radius:8px;padding:10px;line-height:1.8;white-space:pre;max-height:220px;overflow-y:auto;border:1px solid #E2E8F0}
+.status{font-size:13px;padding:7px 14px;border-radius:8px;display:inline-block;margin-bottom:10px;font-weight:500}
+.s-idle{background:#F1F5F9;color:#64748B}
+.s-rec{background:#FEE2E2;color:#B91C1C;animation:pulse 1s infinite}
+.s-ok{background:#DCFCE7;color:#15803D}
+.s-err{background:#FEE2E2;color:#B91C1C}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+.pipeline{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:1rem 0}
+.pstep{text-align:center;min-width:90px;margin-bottom:8px}
+.pstep-label{font-size:10px;color:#64748B;margin-bottom:3px}
+.pbadge{padding:5px 8px;border-radius:6px;font-size:11px;font-weight:600;display:inline-block;min-width:75px;text-align:center}
+.pb-blue{background:#DBEAFE;color:#1E40AF}
+.pb-green{background:#DCFCE7;color:#166534}
+.pb-red{background:#FEE2E2;color:#991B1B}
+.pb-purple{background:#EDE9FE;color:#5B21B6}
+.pb-amber{background:#FEF3C7;color:#92400E}
+.parr{font-size:18px;color:#94A3B8;padding:0 4px;align-self:center;margin-top:16px}
+.bits-row{display:flex;flex-wrap:wrap;gap:2px;margin:4px 0;font-family:'Courier New',monospace;font-size:9px}
+.bit{width:15px;height:15px;display:flex;align-items:center;justify-content:center;border-radius:2px;font-weight:700}
+.b0{background:#DBEAFE;color:#1E40AF}.b1{background:#DCFCE7;color:#166534}.berr{background:#FEE2E2;color:#991B1B}
+canvas{display:block;width:100%}
+.rec-indicator{width:12px;height:12px;background:#DC2626;border-radius:50%;display:inline-block;margin-right:6px;animation:pulse 1s infinite}
+</style>
+</head>
+<body>
+<h1>Décodage à Maximum de Vraisemblance — Transmission Vocale</h1>
+<p class="subtitle">Ouvrez ce fichier dans Chrome ou Firefox • Le microphone fonctionne en local</p>
+
+<div class="tabs">
+  <div class="tab on" onclick="goTab('vocal')">Message vocal réel</div>
+  <div class="tab" onclick="goTab('chaine')">Chaîne PCM + bits</div>
+  <div class="tab" onclick="goTab('compare')">Avant / Après ML</div>
+  <div class="tab" onclick="goTab('ber')">Courbe BER</div>
+  <div class="tab" onclick="goTab('params')">Paramètres</div>
+</div>
+
+<!-- TAB 1 -->
+<div id="t-vocal" class="panel on">
+  <div class="card">
+    <div id="mic-status" class="status s-idle">Microphone non activé — cliquez Enregistrer</div><br>
+    <button class="btn-rec" onclick="startRec()" id="btn-rec">&#9679; Enregistrer</button>
+    <button class="btn-stop" onclick="stopRec()" id="btn-stop" disabled>&#9632; Arrêter</button>
+    <button class="btn-play" onclick="playOrig()" id="btn-play" disabled>&#9654; Écouter original</button>
+    <button class="btn-play" onclick="playML()" id="btn-play-ml" disabled style="background:#0F6E56;border-color:#0F6E56">&#9654; Écouter après ML</button>
+    <button class="btn-run" onclick="runPipeline()" id="btn-run" disabled>&#9654; Simuler transmission ML</button>
+  </div>
+
+  <div class="card">
+    <div class="slabel">Forme d'onde — signal vocal capturé (PCM 8 kHz)</div>
+    <canvas id="cv-wave" height="100"></canvas>
+  </div>
+
+  <div class="pipeline">
+    <div class="pstep"><div class="pstep-label">Microphone</div><div class="pbadge pb-blue" id="ps1">en attente</div></div>
+    <div class="parr">→</div>
+    <div class="pstep"><div class="pstep-label">Éch. 8 kHz</div><div class="pbadge pb-blue" id="ps2">—</div></div>
+    <div class="parr">→</div>
+    <div class="pstep"><div class="pstep-label">Quant. 8 bits</div><div class="pbadge pb-amber" id="ps3">—</div></div>
+    <div class="parr">→</div>
+    <div class="pstep"><div class="pstep-label">Bits PCM</div><div class="pbadge pb-purple" id="ps4">—</div></div>
+    <div class="parr">→</div>
+    <div class="pstep"><div class="pstep-label">Canal BSC</div><div class="pbadge pb-red" id="ps5">—</div></div>
+    <div class="parr">→</div>
+    <div class="pstep"><div class="pstep-label">Décodage ML</div><div class="pbadge pb-green" id="ps6">—</div></div>
+  </div>
+
+  <div class="row">
+    <div class="metric"><div class="ml">Échantillons</div><div class="mv blue" id="r-samp">—</div></div>
+    <div class="metric"><div class="ml">Bits PCM</div><div class="mv purple" id="r-bits">—</div></div>
+    <div class="metric"><div class="ml">Erreurs canal</div><div class="mv red" id="r-err">—</div></div>
+    <div class="metric"><div class="ml">BER canal</div><div class="mv red" id="r-berc">—</div></div>
+    <div class="metric"><div class="ml">Erreurs après ML</div><div class="mv green" id="r-res">—</div></div>
+    <div class="metric"><div class="ml">BER après ML</div><div class="mv green" id="r-berd">—</div></div>
+  </div>
+</div>
+
+<!-- TAB 2 -->
+<div id="t-chaine" class="panel">
+  <div class="card">
+    <div class="slabel">Bits originaux PCM (64 premiers octets — bleu=0, vert=1)</div>
+    <div class="bits-row" id="bits-orig"></div>
+  </div>
+  <div class="card">
+    <div class="slabel">Bits après canal BSC — rouge = bit erroné par le bruit</div>
+    <div class="bits-row" id="bits-noisy"></div>
+  </div>
+  <div class="card">
+    <div class="slabel">Bits après décodage ML — rouge = erreur résiduelle</div>
+    <div class="bits-row" id="bits-ml"></div>
+  </div>
+  <div class="log" id="chain-log">Enregistrez un message vocal puis lancez la simulation.</div>
+</div>
+
+<!-- TAB 3 -->
+<div id="t-compare" class="panel">
+  <div class="card">
+    <div class="slabel">Bleu = signal original &nbsp;|&nbsp; Rouge = signal bruité (après canal BSC)</div>
+    <canvas id="cv-noisy" height="110"></canvas>
+  </div>
+  <div class="card">
+    <div class="slabel">Bleu = signal original &nbsp;|&nbsp; Vert = signal reconstruit après décodage ML</div>
+    <canvas id="cv-ml" height="110"></canvas>
+  </div>
+  <div class="row">
+    <div class="metric"><div class="ml">SNR original</div><div class="mv blue">∞ dB</div></div>
+    <div class="metric"><div class="ml">SNR après bruit</div><div class="mv red" id="snr-n">—</div></div>
+    <div class="metric"><div class="ml">SNR après ML</div><div class="mv green" id="snr-m">—</div></div>
+    <div class="metric"><div class="ml">Gain ML</div><div class="mv purple" id="snr-g">—</div></div>
+  </div>
+  <div class="card">
+    <div class="slabel">Erreur résiduelle par échantillon (original − reconstruit ML)</div>
+    <canvas id="cv-err" height="70"></canvas>
+  </div>
+</div>
+
+<!-- TAB 4 -->
+<div id="t-ber" class="panel">
+  <div class="card">
+    <canvas id="ber-cv" height="260"></canvas>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:#64748B;margin-bottom:1rem;padding:0 0 0 0">
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:18px;height:3px;background:#B91C1C;display:inline-block;border-top:2px dashed #B91C1C"></span>Sans codage (BER=p)</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:18px;height:3px;background:#15803D;display:inline-block"></span>Théorique code (3,1)</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:50%;background:#1D4ED8;display:inline-block"></span>Simulé signal vocal</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid #B45309;display:inline-block"></span>Point actuel</span>
+  </div>
+  <div class="row">
+    <div class="metric"><div class="ml">p actuel</div><div class="mv orange" id="ber-pv">—</div></div>
+    <div class="metric"><div class="ml">BER canal</div><div class="mv red" id="ber-cv2">—</div></div>
+    <div class="metric"><div class="ml">BER après ML</div><div class="mv green" id="ber-mv">—</div></div>
+    <div class="metric"><div class="ml">Gain de codage</div><div class="mv purple" id="ber-gv">—</div></div>
+  </div>
+</div>
+
+<!-- TAB 5 -->
+<div id="t-params" class="panel">
+  <div class="card">
+    <div class="row">
+      <div style="flex:1;min-width:160px">
+        <label>Probabilité d'erreur du canal (p)</label>
+        <input type="range" id="p-sl" min="1" max="30" value="5" step="1" oninput="updP()">
+        <span style="font-size:12px;color:#64748B" id="p-disp">p = 0.05</span>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>Bits par échantillon (quantification)</label>
+        <input type="range" id="bps-sl" min="4" max="16" value="8" step="4" oninput="updBps()">
+        <span style="font-size:12px;color:#64748B" id="bps-disp">8 bits → 256 niveaux</span>
+      </div>
+    </div>
+    <div class="row">
+      <div style="flex:1;min-width:160px">
+        <label>Code de canal</label>
+        <select id="code-sl">
+          <option value="3">Répétitif (3,1) — R = 1/3</option>
+          <option value="5">Répétitif (5,1) — R = 1/5</option>
+          <option value="1">Sans codage — R = 1</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>Graine aléatoire</label>
+        <input type="range" id="seed-sl" min="1" max="99" value="42" step="1" oninput="updSeed()">
+        <span style="font-size:12px;color:#64748B" id="seed-disp">42</span>
+      </div>
+    </div>
+  </div>
+  <div class="log" id="params-log"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const FE=8000;
+let pcmOrig=[],pcmNoisy=[],pcmML=[],bitsOrig=[],bitsNoisy=[],bitsML=[];
+let mediaStream=null,recorder=null,audioChunks=[];
+let berChart=null,berBuilt=false;
+let audioCtxPlay=null;
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function getP(){return parseInt(document.getElementById('p-sl').value)/100;}
+function getBps(){return parseInt(document.getElementById('bps-sl').value);}
+function getCode(){return parseInt(document.getElementById('code-sl').value);}
+function getSeed(){return parseInt(document.getElementById('seed-sl').value);}
+function updP(){document.getElementById('p-disp').textContent='p = '+getP().toFixed(2);updLog();}
+function updBps(){const b=getBps();document.getElementById('bps-disp').textContent=b+' bits → '+Math.pow(2,b)+' niveaux';updLog();}
+function updSeed(){document.getElementById('seed-disp').textContent=getSeed();updLog();}
+function updLog(){
+  const p=getP(),bps=getBps(),code=getCode(),fe=FE;
+  const cL={1:'Sans codage R=1',3:'Répétitif (3,1) R=1/3',5:'Répétitif (5,1) R=1/5'}[code];
+  document.getElementById('params-log').textContent=
+    `Fréquence d'échantillonnage : ${fe} Hz  (norme G.711 téléphonie)\n`+
+    `Bits par échantillon        : ${bps} bits\n`+
+    `Niveaux de quantification   : ${Math.pow(2,bps)}\n`+
+    `Pas de quantification Δ     : ${(2/Math.pow(2,bps)).toFixed(5)}\n`+
+    `Débit binaire PCM           : ${fe*bps/1000} kbps\n`+
+    `Code de canal               : ${cL}\n`+
+    `Probabilité erreur p        : ${p.toFixed(2)}\n`+
+    `BER théorique (3,1)         : ${berTh(p).toExponential(3)}\n`+
+    `Amélioration théorique      : ×${Math.round(p/Math.max(berTh(p),1e-12))}`;
+}
+
+// ── enregistrement microphone ──────────────────────────────────────────────
+async function startRec(){
+  try{
+    mediaStream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:FE,channelCount:1,echoCancellation:false,noiseSuppression:false}});
+    recorder=new MediaRecorder(mediaStream);
+    audioChunks=[];
+    recorder.ondataavailable=e=>audioChunks.push(e.data);
+    recorder.onstop=processAudio;
+    recorder.start(100);
+    document.getElementById('mic-status').innerHTML='<span class="rec-indicator"></span>Enregistrement en cours — parlez maintenant';
+    document.getElementById('mic-status').className='status s-rec';
+    document.getElementById('btn-rec').disabled=true;
+    document.getElementById('btn-stop').disabled=false;
+    document.getElementById('btn-run').disabled=true;
+    document.getElementById('ps1').textContent='actif';
+    document.getElementById('ps1').className='pbadge pb-red';
+  }catch(e){
+    document.getElementById('mic-status').textContent='Erreur : '+e.message;
+    document.getElementById('mic-status').className='status s-err';
+  }
+}
+
+function stopRec(){
+  if(recorder&&recorder.state!=='inactive')recorder.stop();
+  if(mediaStream)mediaStream.getTracks().forEach(t=>t.stop());
+  document.getElementById('btn-stop').disabled=true;
+  document.getElementById('btn-rec').disabled=false;
+  document.getElementById('mic-status').textContent='Traitement audio...';
+  document.getElementById('mic-status').className='status s-idle';
+}
+
+async function processAudio(){
+  const blob=new Blob(audioChunks,{type:'audio/webm'});
+  const ab=await blob.arrayBuffer();
+  const ac=new AudioContext();
+  let decoded;
+  try{decoded=await ac.decodeAudioData(ab);}
+  catch(e){
+    document.getElementById('mic-status').textContent='Erreur décodage : '+e.message;
+    document.getElementById('mic-status').className='status s-err';
+    return;
+  }
+  const raw=decoded.getChannelData(0);
+  const ratio=Math.max(1,Math.round(decoded.sampleRate/FE));
+  const samples=[];
+  for(let i=0;i<raw.length;i+=ratio)samples.push(raw[i]);
+  pcmOrig=quantize(samples,getBps());
+  drawWave('cv-wave',[pcmOrig],'#2563EB');
+  document.getElementById('mic-status').textContent='Enregistrement prêt — '+samples.length+' échantillons @ '+FE+' Hz';
+  document.getElementById('mic-status').className='status s-ok';
+  document.getElementById('btn-run').disabled=false;
+  document.getElementById('btn-play').disabled=false;
+  document.getElementById('ps2').textContent=samples.length+' éch.';document.getElementById('ps2').className='pbadge pb-blue';
+  document.getElementById('ps3').textContent=getBps()+' bits';document.getElementById('ps3').className='pbadge pb-amber';
+  document.getElementById('ps4').textContent=(samples.length*getBps()/1000).toFixed(1)+'k bits';document.getElementById('ps4').className='pbadge pb-purple';
+}
+
+// ── quantification ─────────────────────────────────────────────────────────
+function quantize(samples,bps){
+  const levels=Math.pow(2,bps),step=2/levels;
+  return samples.map(s=>{
+    const idx=Math.max(0,Math.min(levels-1,Math.floor((Math.max(-1,Math.min(0.9999,s))+1)/step)));
+    return (idx+0.5)/levels*2-1;
+  });
+}
+
+function pcmToBits(pcm,bps){
+  const levels=Math.pow(2,bps),step=2/levels;
+  const bits=[];
+  for(const s of pcm){
+    const idx=Math.max(0,Math.min(levels-1,Math.round((s+1)/step-0.5)));
+    for(let i=bps-1;i>=0;i--)bits.push((idx>>i)&1);
+  }
+  return bits;
+}
+
+function bitsToPcm(bits,bps){
+  const levels=Math.pow(2,bps);
+  const pcm=[];
+  for(let i=0;i<bits.length;i+=bps){
+    let v=0;for(let j=0;j<bps;j++)v=(v<<1)|(bits[i+j]||0);
+    pcm.push((v+0.5)/levels*2-1);
+  }
+  return pcm;
+}
+
+// ── canal BSC ──────────────────────────────────────────────────────────────
+function seeded(s){let st=((s%2147483646)+1);return()=>{st=st*16807%2147483647;return(st-1)/2147483646;};}
+
+function bsc(bits,p,seed){
+  const rng=seeded(seed*997+13),rec=[],mask=[];
+  for(const b of bits){const e=rng()<p?1:0;rec.push((b+e)%2);mask.push(e);}
+  return{rec,mask};
+}
+
+function encRep(bits,k){const r=[];for(const b of bits)for(let i=0;i<k;i++)r.push(b);return r;}
+function decRep(bits,k){
+  const r=[];
+  for(let i=0;i<bits.length;i+=k){
+    const t=bits.slice(i,i+k);
+    r.push(t.reduce((a,b)=>a+b,0)>=k/2?1:0);
+  }
+  return r;
+}
+
+function berTh(p){return 3*p*p-2*p*p*p;}
+
+// ── pipeline ───────────────────────────────────────────────────────────────
+function runPipeline(){
+  if(!pcmOrig.length){alert('Enregistrez un message vocal d\'abord.');return;}
+  const p=getP(),bps=getBps(),code=getCode(),seed=getSeed();
+  bitsOrig=pcmToBits(pcmOrig,bps);
+  const enc=code>1?encRep(bitsOrig,code):bitsOrig;
+  const{rec,mask}=bsc(enc,p,seed);
+  bitsNoisy=rec;
+  bitsML=code>1?decRep(rec,code):rec;
+  pcmNoisy=bitsToPcm(bitsNoisy.slice(0,bitsOrig.length),bps);
+  pcmML=bitsToPcm(bitsML.slice(0,pcmOrig.length),bps);
+
+  const nErr=mask.reduce((s,x)=>s+x,0);
+  const nRes=bitsOrig.reduce((s,b,i)=>s+(b!==(bitsML[i]||0)?1:0),0);
+  const berC=nErr/enc.length,berD=nRes/bitsOrig.length;
+
+  document.getElementById('r-samp').textContent=pcmOrig.length;
+  document.getElementById('r-bits').textContent=bitsOrig.length;
+  document.getElementById('r-err').textContent=nErr;
+  document.getElementById('r-berc').textContent=(berC*100).toFixed(2)+'%';
+  document.getElementById('r-res').textContent=nRes;
+  document.getElementById('r-berd').textContent=(berD*100).toFixed(2)+'%';
+  document.getElementById('ps5').textContent=nErr+' err.';document.getElementById('ps5').className='pbadge pb-red';
+  document.getElementById('ps6').textContent=nRes===0?'0 erreur':'BER '+(berD*100).toFixed(1)+'%';
+  document.getElementById('ps6').className='pbadge '+(nRes===0?'pb-green':'pb-amber');
+  document.getElementById('btn-play-ml').disabled=false;
+
+  renderBits(bps,code);
+  renderCompare();
+  buildChainLog(nErr,enc.length,nRes,bitsOrig.length,berC,berD,code,bps,p);
+  if(berBuilt)updateBerPoint(p,berC,berD);
+}
+
+// ── bits display ───────────────────────────────────────────────────────────
+function renderBits(bps,code){
+  const MAX=64*bps;
+  function fill(id,bits,mask){
+    const div=document.getElementById(id);div.innerHTML='';
+    const n=Math.min(MAX,bits.length);
+    for(let i=0;i<n;i++){
+      const sp=document.createElement('span');
+      sp.className='bit '+(mask&&mask[i]?'berr':(bits[i]?'b1':'b0'));
+      sp.textContent=bits[i];div.appendChild(sp);
+    }
+    if(bits.length>MAX){const s=document.createElement('span');s.style.cssText='font-size:9px;color:#64748B';s.textContent=' …+'+(bits.length-MAX)+' bits';div.appendChild(s);}
+  }
+  const eo=code>1?encRep(bitsOrig,code):bitsOrig;
+  const eMask=bitsNoisy.map((b,i)=>b!==(eo[i]||0)?1:0);
+  const rMask=bitsOrig.map((b,i)=>b!==(bitsML[i]||0)?1:0);
+  fill('bits-orig',bitsOrig,null);
+  fill('bits-noisy',bitsNoisy.slice(0,MAX),eMask.slice(0,MAX));
+  fill('bits-ml',bitsML.slice(0,MAX),rMask.slice(0,MAX));
+}
+
+// ── waveform drawing ───────────────────────────────────────────────────────
+function drawWave(id,datasets,colors){
+  const cv=document.getElementById(id);
+  const ctx=cv.getContext('2d');
+  const W=cv.offsetWidth||800,H=parseInt(cv.getAttribute('height'))||100;
+  cv.width=W;ctx.clearRect(0,0,W,H);
+  const colArr=Array.isArray(colors)?colors:[colors];
+  datasets.forEach((data,di)=>{
+    const N=Math.min(data.length,W*3);
+    const step=W/N;
+    ctx.beginPath();ctx.strokeStyle=colArr[di%colArr.length];ctx.globalAlpha=di===0?0.9:0.7;ctx.lineWidth=1.5;
+    for(let i=0;i<N;i++){
+      const idx=Math.floor(i*data.length/N);
+      const x=i*step,y=H/2-(data[idx]||0)*(H/2-5);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.globalAlpha=1;
+  });
+}
+
+function snrDb(sig,ref){
+  const N=Math.min(sig.length,ref.length);
+  const ps=ref.slice(0,N).reduce((a,x)=>a+x*x,0)/N;
+  const pn=sig.slice(0,N).reduce((a,x,i)=>a+(x-(ref[i]||0))*(x-(ref[i]||0)),0)/N;
+  if(pn<1e-12)return Infinity;
+  return 10*Math.log10(ps/pn);
+}
+
+function renderCompare(){
+  drawWave('cv-noisy',[pcmOrig,pcmNoisy],['#2563EB','#DC2626']);
+  drawWave('cv-ml',[pcmOrig,pcmML],['#2563EB','#16A34A']);
+  const N=Math.min(pcmOrig.length,pcmNoisy.length,pcmML.length);
+  const sn=snrDb(pcmNoisy.slice(0,N),pcmOrig.slice(0,N));
+  const sm=snrDb(pcmML.slice(0,N),pcmOrig.slice(0,N));
+  document.getElementById('snr-n').textContent=(isFinite(sn)?sn.toFixed(1):'>40')+' dB';
+  document.getElementById('snr-m').textContent=(isFinite(sm)?sm.toFixed(1):'>40')+' dB';
+  const g=isFinite(sn)&&isFinite(sm)?sm-sn:null;
+  document.getElementById('snr-g').textContent=g!==null?(g>=0?'+':'')+g.toFixed(1)+' dB':'—';
+  const err=pcmOrig.slice(0,N).map((x,i)=>x-(pcmML[i]||0));
+  drawWave('cv-err',[err],['#DC2626']);
+}
+
+function buildChainLog(nE,nEnc,nR,nOrig,berC,berD,code,bps,p){
+  const cL={1:'Sans codage',3:'Répétitif (3,1)',5:'Répétitif (5,1)'}[code];
+  document.getElementById('chain-log').textContent=
+    `Signal vocal capturé par microphone\n`+
+    `  Fréq. échantillonnage : ${FE} Hz  (norme G.711)\n`+
+    `  Quantification        : ${bps} bits  →  ${Math.pow(2,bps)} niveaux\n`+
+    `  Débit PCM             : ${FE*bps/1000} kbps\n`+
+    `  Échantillons          : ${pcmOrig.length}\n`+
+    `  Bits PCM totaux       : ${nOrig}\n`+
+    `\nCodage canal : ${cL}\n`+
+    `  Bits transmis         : ${nEnc}\n`+
+    `  Probabilité erreur p  : ${p.toFixed(2)}\n`+
+    `  Erreurs introduites   : ${nE}  BER = ${(berC*100).toFixed(2)}%\n`+
+    `\nDécodage ML (règle de majorité)\n`+
+    `  Erreurs résiduelles   : ${nR}  BER = ${(berD*100).toFixed(2)}%\n`+
+    `  BER théorique (3,1)   : ${berTh(p).toExponential(3)}\n`+
+    `  Amélioration BER      : ${(berC*100).toFixed(2)}% → ${(berD*100).toFixed(2)}%`;
+}
+
+// ── lecture audio ──────────────────────────────────────────────────────────
+function playPcm(samples){
+  if(audioCtxPlay)audioCtxPlay.close();
+  audioCtxPlay=new AudioContext({sampleRate:FE});
+  const buf=audioCtxPlay.createBuffer(1,samples.length,FE);
+  buf.copyToChannel(new Float32Array(samples),0);
+  const src=audioCtxPlay.createBufferSource();
+  src.buffer=buf;src.connect(audioCtxPlay.destination);src.start();
+}
+function playOrig(){if(pcmOrig.length)playPcm(pcmOrig);}
+function playML(){if(pcmML.length)playPcm(pcmML);}
+
+// ── courbe BER ─────────────────────────────────────────────────────────────
+function goTab(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',['vocal','chaine','compare','ber','params'][i]===id));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('t-'+id).classList.add('on');
+  if(id==='ber'&&!berBuilt)buildBer();
+}
+
+function buildBer(){
+  berBuilt=true;
+  const Ps=Array.from({length:49},(_,i)=>(i+1)/100);
+  const thNC=Ps,thRep=Ps.map(berTh);
+  const simV=[];
+  const rng0=seeded(7);
+  for(let pi=0;pi<Ps.length;pi++){
+    const p=Ps[pi];let err=0,tot=0;
+    const rng=seeded(pi*997+7);
+    for(let t=0;t<80;t++){
+      const bits=Array.from({length:56},()=>Math.round(rng0()));
+      const enc=encRep(bits,3);
+      const rec=enc.map(b=>(rng()<p?(1-b):b));
+      const dec=decRep(rec,3);
+      for(let i=0;i<bits.length;i++)if(bits[i]!==dec[i])err++;
+      tot+=bits.length;
+    }
+    simV.push(Math.max(err/tot,1e-6));
+  }
+  const ctx=document.getElementById('ber-cv').getContext('2d');
+  berChart=new Chart(ctx,{
+    data:{labels:Ps.map(p=>p.toFixed(2)),datasets:[
+      {type:'line',data:thNC,borderColor:'#B91C1C',borderDash:[5,3],borderWidth:2,pointRadius:0,tension:0.1,yAxisID:'y',label:'Sans codage'},
+      {type:'line',data:thRep,borderColor:'#15803D',borderWidth:2.5,pointRadius:0,tension:0.3,yAxisID:'y',label:'Théorique (3,1)'},
+      {type:'scatter',data:Ps.map((p,i)=>({x:p,y:simV[i]})),backgroundColor:'#1D4ED8',pointRadius:4,yAxisID:'y',label:'Simulé'},
+      {type:'scatter',data:[],backgroundColor:'#B45309',pointRadius:10,pointStyle:'triangle',yAxisID:'y',label:'Actuel'},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{
+        x:{title:{display:true,text:"Probabilité d'erreur p"},ticks:{maxTicksLimit:10}},
+        y:{type:'logarithmic',title:{display:true,text:'BER'},min:1e-5,max:0.6,
+           ticks:{callback:v=>v>=0.1?v.toFixed(1):v.toExponential(0)}}
+      },
+      plugins:{legend:{display:false}}
+    }
+  });
+  updateBerPoint(getP(),null,null);
+}
+
+function updateBerPoint(p,berC,berD){
+  if(!berChart)return;
+  const y=berC!==null?berC:berTh(p);
+  berChart.data.datasets[3].data=[{x:p,y:Math.max(y,1e-6)}];
+  berChart.update('none');
+  document.getElementById('ber-pv').textContent='p = '+p.toFixed(2);
+  document.getElementById('ber-cv2').textContent=berC!==null?(berC*100).toFixed(2)+'%':'—';
+  document.getElementById('ber-mv').textContent=berD!==null?(berD*100).toFixed(2)+'%':'—';
+  if(berC&&berD&&berD>0){document.getElementById('ber-gv').textContent='×'+Math.round(berC/berD);}
+}
+
+updLog();
+</script>
+</body>
+</html>
